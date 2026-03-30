@@ -1,0 +1,68 @@
+CREATE OR REPLACE PROCEDURE p_export_csv IS
+    v_dir CONSTANT VARCHAR2(30) := 'DATA_PUMP_DIR';
+    v_excel_limit CONSTANT NUMBER := 1048576;
+    v_bulk_limit CONSTANT NUMBER := 1000;
+    
+    v_file UTL_FILE.FILE_TYPE;
+    v_file_count NUMBER := 1;
+    v_row_count NUMBER := 0;
+    v_file_name VARCHAR2(100) := '';
+    v_header VARCHAR2(1000) := '';
+    v_line VARCHAR2(10000) := '';
+    
+    CURSOR c_data IS
+        SELECT TASK_ID,TASK_NAME,"CATEGORY",PRIORITY_LEVEL,ASSIGNED_TO,START_DATE,DUE_DATE,STATUS,PROGRESS_PERCENT,REMARKS FROM project_tasks;
+    
+    TYPE t_data_tab IS TABLE OF c_data%ROWTYPE;
+    v_batch t_data_tab;
+    
+BEGIN
+
+    v_file_name := 'test_' || v_file_count  || '.csv';
+    v_file := UTL_FILE.FOPEN(v_dir, v_file_name, 'w', 32767);
+    v_header := 'TASK_ID,TASK_NAME,CATEGORY,PRIORITY_LEVEL,ASSIGNED_TO,START_DATE,DUE_DATE,STATUS,PROGRESS_PERCENT,REMARKS';
+    UTL_FILE.PUT_LINE(v_file, v_header);
+    
+    OPEN c_data;
+    LOOP
+        FETCH c_data BULK COLLECT INTO v_batch LIMIT v_bulk_limit;
+        EXIT WHEN v_batch.COUNT = 0;
+        
+        FOR i IN 1 .. v_batch.COUNT LOOP
+            IF v_row_count >= (v_excel_limit - 1) THEN
+                UTL_FILE.FCLOSE(v_file);
+                
+                v_file_count := v_file_count + 1;
+                v_row_count := 0;
+                
+                v_file_name := 'test_' || v_file_count  || '.csv';
+                v_file := UTL_FILE.FOPEN(v_dir, v_file_name, 'w', 32767);
+                v_header := 'TASK_ID,TASK_NAME,CATEGORY,PRIORITY_LEVEL,ASSIGNED_TO,START_DATE,DUE_DATE,STATUS,PROGRESS_PERCENT,REMARKS';
+                UTL_FILE.PUT_LINE(v_file, v_header);
+            END IF;
+            
+            v_line := v_batch(i).TASK_ID || ',' || 
+                        v_batch(i).TASK_NAME || ',' || 
+                        v_batch(i)."CATEGORY" || ',' || 
+                        v_batch(i).PRIORITY_LEVEL || ',' || 
+                        v_batch(i).ASSIGNED_TO || ',' || 
+                        v_batch(i).START_DATE || ',' || 
+                        v_batch(i).DUE_DATE || ',' || 
+                        v_batch(i).STATUS || ',' || 
+                        v_batch(i).PROGRESS_PERCENT || ',' || 
+                        v_batch(i).REMARKS; 
+                
+            UTL_FILE.PUT_LINE(v_file, v_line);
+            
+            v_row_count := v_row_count + 1;
+        END LOOP;
+        
+        
+    END LOOP;
+    
+    CLOSE c_data;
+    UTL_FILE.FCLOSE(v_file);
+END p_export_csv;
+
+
+exec p_export_csv;
